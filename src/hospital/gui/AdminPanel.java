@@ -5,6 +5,7 @@ import hospital.services.HospitalService;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.List;
 
 public class AdminPanel {
     private final HospitalService svc = HospitalService.getInstance();
@@ -14,10 +15,10 @@ public class AdminPanel {
     public AdminPanel(JFrame frame, JPanel content) { this.frame = frame; this.content = content; }
 
     public String[] getMenuLabels() {
-        return new String[]{"\u2630 Dashboard", "\u2795 Add Doctor", "\u2795 Add Patient", "\u2699 All Records"};
+        return new String[]{"\u2630 Dashboard", "\u2795 Add Doctor", "\u2795 Add Patient", "\u2699 Manage Users"};
     }
     public Runnable[] getActions() {
-        return new Runnable[]{this::showDashboard, this::showAddDoctor, this::showAddPatient, this::showAllRecords};
+        return new Runnable[]{this::showDashboard, this::showAddDoctor, this::showAddPatient, this::showManageUsers};
     }
 
     public void showDashboard() {
@@ -31,7 +32,7 @@ public class AdminPanel {
         JPanel stats = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         stats.setOpaque(false);
         stats.setAlignmentX(Component.LEFT_ALIGNMENT);
-        stats.setMaximumSize(new Dimension(700, 100));
+        stats.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
         stats.add(Theme.statCard("Doctors", String.valueOf(svc.getDoctorCount()), Theme.BLUE));
         stats.add(Theme.statCard("Patients", String.valueOf(svc.getPatientCount()), Theme.GREEN));
         stats.add(Theme.statCard("Appointments", String.valueOf(svc.getAppointmentCount()), Theme.ORANGE));
@@ -39,13 +40,18 @@ public class AdminPanel {
         content.add(stats);
         content.add(Box.createVerticalStrut(24));
 
-        // Recent doctors list
         content.add(Theme.label("Registered Doctors", Theme.FONT_H2, Theme.TEXT_WHITE));
         content.add(Box.createVerticalStrut(10));
+        
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setOpaque(false);
+        listPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
         for (Doctor d : svc.getAllDoctors()) {
             JPanel row = Theme.card();
             row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
-            row.setMaximumSize(new Dimension(620, 50));
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
             row.setBorder(new EmptyBorder(12, 16, 12, 16));
             row.add(Theme.label("Dr. " + d.getName(), Theme.FONT_BODY, Theme.TEXT_WHITE));
@@ -53,9 +59,10 @@ public class AdminPanel {
             row.add(Theme.label(d.getSpecialization(), Theme.FONT_SMALL, Theme.CYAN));
             row.add(Box.createHorizontalStrut(20));
             row.add(Theme.label("$" + d.getConsultationFee(), Theme.FONT_SMALL, Theme.GREEN));
-            content.add(row);
-            content.add(Box.createVerticalStrut(4));
+            listPanel.add(row);
+            listPanel.add(Box.createVerticalStrut(4));
         }
+        content.add(Theme.darkScroll(listPanel));
         done();
     }
 
@@ -125,20 +132,75 @@ public class AdminPanel {
         done();
     }
 
-    public void showAllRecords() {
+    public void showManageUsers() {
         reset();
         content.setLayout(new BorderLayout(0, 14));
-        content.add(Theme.label("All System Records", Theme.FONT_TITLE, Theme.TEXT_WHITE), BorderLayout.NORTH);
-        JTextArea area = Theme.makeTextArea();
-        area.append("  \u2550\u2550\u2550 DOCTORS \u2550\u2550\u2550\n");
-        for (Doctor d : svc.getAllDoctors())
-            area.append("   \u2022 " + d + "  |  $" + d.getConsultationFee() + "  |  Slots: " + d.getAvailableSlots().size() + "\n");
-        area.append("\n  \u2550\u2550\u2550 PATIENTS \u2550\u2550\u2550\n");
-        for (Patient p : svc.getAllPatients()) area.append("   \u2022 " + p + "\n");
-        area.append("\n  \u2550\u2550\u2550 APPOINTMENTS \u2550\u2550\u2550\n");
-        if (svc.getAllAppointments().isEmpty()) area.append("   No appointments yet.\n");
-        for (Appointment a : svc.getAllAppointments()) area.append("   \u2022 " + a + "\n");
-        content.add(Theme.darkScroll(area), BorderLayout.CENTER);
+        
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        top.add(Theme.label("Manage Users", Theme.FONT_TITLE, Theme.TEXT_WHITE), BorderLayout.WEST);
+        
+        JPanel searchBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        searchBar.setOpaque(false);
+        JTextField searchF = Theme.makeField("Search ID or Name...");
+        searchF.setPreferredSize(new Dimension(200, 38));
+        JButton searchBtn = Theme.makeButton("Search", Theme.BLUE);
+        searchBtn.setPreferredSize(new Dimension(100, 38));
+        searchBar.add(searchF); searchBar.add(searchBtn);
+        top.add(searchBar, BorderLayout.EAST);
+        
+        content.add(top, BorderLayout.NORTH);
+
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setOpaque(false);
+
+        Runnable loadUsers = () -> {
+            listPanel.removeAll();
+            String query = searchF.getText().trim();
+            List<User> found = svc.searchUsers(query);
+            
+            if (found.isEmpty()) {
+                listPanel.add(Theme.label("No users found matching query.", Theme.FONT_BODY, Theme.TEXT_DIM));
+            } else {
+                for (User u : found) {
+                    if (u instanceof Admin) continue; // Prevent deleting admins
+                    
+                    JPanel card = Theme.card();
+                    card.setLayout(new BoxLayout(card, BoxLayout.X_AXIS));
+                    card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+                    card.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    card.setBorder(new EmptyBorder(10, 16, 10, 16));
+                    
+                    card.add(Theme.label(u.getId(), Theme.FONT_SMALL, Theme.TEXT_DIM));
+                    card.add(Box.createHorizontalStrut(14));
+                    card.add(Theme.label(u.getName(), Theme.FONT_BODY, Theme.TEXT_WHITE));
+                    card.add(Box.createHorizontalStrut(14));
+                    card.add(Theme.label(u.getRole().toUpperCase(), Theme.FONT_TINY, Theme.CYAN));
+                    card.add(Box.createHorizontalGlue());
+                    
+                    JButton delBtn = Theme.makeButton("Delete", Theme.RED);
+                    delBtn.setPreferredSize(new Dimension(90, 30));
+                    delBtn.setFont(Theme.FONT_TINY);
+                    delBtn.addActionListener(e -> {
+                        int opt = JOptionPane.showConfirmDialog(frame, "Delete user " + u.getName() + "?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+                        if (opt == JOptionPane.YES_OPTION) {
+                            svc.removeUser(u.getId());
+                            searchBtn.doClick(); // reload
+                        }
+                    });
+                    card.add(delBtn);
+                    listPanel.add(card);
+                    listPanel.add(Box.createVerticalStrut(5));
+                }
+            }
+            listPanel.revalidate(); listPanel.repaint();
+        };
+
+        searchBtn.addActionListener(e -> loadUsers.run());
+        loadUsers.run(); // initial load
+
+        content.add(Theme.darkScroll(listPanel), BorderLayout.CENTER);
         done();
     }
 

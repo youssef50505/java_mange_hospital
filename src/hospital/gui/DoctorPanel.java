@@ -18,10 +18,10 @@ public class DoctorPanel {
     public DoctorPanel(JFrame f, JPanel c, Doctor d) { frame = f; content = c; doctor = d; }
 
     public String[] getMenuLabels() {
-        return new String[]{"\u2630 Appointments", "\u270E Prescribe", "\u2139 My Profile"};
+        return new String[]{"\u2630 Appointments", "\u270E Prescribe", "\u270E Update Records", "\u2139 My Profile"};
     }
     public Runnable[] getActions() {
-        return new Runnable[]{this::showAppointments, this::showPrescribe, this::showProfile};
+        return new Runnable[]{this::showAppointments, this::showPrescribe, this::showUpdateRecords, this::showProfile};
     }
 
     public void showAppointments() {
@@ -29,40 +29,66 @@ public class DoctorPanel {
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.add(Theme.label("My Appointments", Theme.FONT_TITLE, Theme.TEXT_WHITE));
         content.add(Box.createVerticalStrut(6));
-        content.add(Theme.label("Patients scheduled with you", Theme.FONT_SMALL, Theme.TEXT_DIM));
+        content.add(Theme.label("Manage and complete scheduled appointments", Theme.FONT_SMALL, Theme.TEXT_DIM));
         content.add(Box.createVerticalStrut(16));
+
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setOpaque(false);
+        listPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         List<Appointment> list = svc.getAppointmentsForUser(doctor);
         if (list.isEmpty()) {
             JPanel empty = Theme.card();
             empty.setLayout(new BoxLayout(empty, BoxLayout.Y_AXIS));
-            empty.setMaximumSize(new Dimension(500, 80));
+            empty.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
             empty.setAlignmentX(Component.LEFT_ALIGNMENT);
             empty.add(Theme.label("No appointments yet", Theme.FONT_BODY, Theme.TEXT_LIGHT));
             empty.add(Box.createVerticalStrut(4));
             empty.add(Theme.label("Patients will book via their portal.", Theme.FONT_SMALL, Theme.TEXT_DIM));
-            content.add(empty);
+            listPanel.add(empty);
         } else {
             for (Appointment a : list) {
                 JPanel row = Theme.card();
                 row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
-                row.setMaximumSize(new Dimension(580, 70));
+                row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
                 row.setAlignmentX(Component.LEFT_ALIGNMENT);
                 row.setBorder(new EmptyBorder(14, 18, 14, 18));
 
                 JPanel top = new JPanel(new BorderLayout());
                 top.setOpaque(false);
                 top.add(Theme.label(a.getPatient().getName(), Theme.FONT_BODY, Theme.TEXT_WHITE), BorderLayout.WEST);
+                
                 Color stColor = a.getStatus() == Appointment.Status.SCHEDULED ? Theme.ORANGE : Theme.GREEN;
+                if (a.getStatus() == Appointment.Status.CANCELLED) stColor = Theme.RED;
                 top.add(Theme.label(a.getStatus().toString(), Theme.FONT_TINY, stColor), BorderLayout.EAST);
                 row.add(top);
                 row.add(Box.createVerticalStrut(4));
                 row.add(Theme.label(a.getDate() + " @ " + a.getTimeSlot() + "  |  Blood: " + a.getPatient().getBloodGroup(),
                         Theme.FONT_SMALL, Theme.TEXT_DIM));
-                content.add(row);
-                content.add(Box.createVerticalStrut(5));
+                
+                if (a.getStatus() == Appointment.Status.SCHEDULED) {
+                    JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+                    btns.setOpaque(false);
+                    JButton compBtn = Theme.makeButton("Complete", Theme.GREEN);
+                    compBtn.setPreferredSize(new Dimension(100, 30));
+                    compBtn.setFont(Theme.FONT_TINY);
+                    compBtn.addActionListener(e -> { a.complete(); showAppointments(); });
+                    
+                    JButton cancBtn = Theme.makeButton("Cancel", Theme.RED);
+                    cancBtn.setPreferredSize(new Dimension(100, 30));
+                    cancBtn.setFont(Theme.FONT_TINY);
+                    cancBtn.addActionListener(e -> { a.cancel(); showAppointments(); });
+                    
+                    btns.add(compBtn); btns.add(cancBtn);
+                    row.add(Box.createVerticalStrut(8));
+                    row.add(btns);
+                }
+                listPanel.add(row);
+                listPanel.add(Box.createVerticalStrut(5));
             }
         }
+        content.add(Theme.darkScroll(listPanel));
         done();
     }
 
@@ -101,6 +127,54 @@ public class DoctorPanel {
         done();
     }
 
+    public void showUpdateRecords() {
+        reset();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.add(Theme.label("Update Medical Records", Theme.FONT_TITLE, Theme.TEXT_WHITE));
+        content.add(Box.createVerticalStrut(20));
+
+        lbl("Select Patient");
+        List<Patient> pats = svc.getAllPatients();
+        JComboBox<Patient> patBox = Theme.makeComboBox(pats.toArray(new Patient[0]));
+        patBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(patBox); content.add(Box.createVerticalStrut(12));
+
+        lbl("Medical History");
+        JTextArea histArea = new JTextArea();
+        histArea.setFont(Theme.FONT_BODY);
+        histArea.setBackground(Theme.BG_INPUT);
+        histArea.setForeground(Theme.TEXT_WHITE);
+        histArea.setCaretColor(Theme.BLUE);
+        histArea.setLineWrap(true);
+        histArea.setWrapStyleWord(true);
+        histArea.setBorder(new EmptyBorder(10, 10, 10, 10));
+        
+        JScrollPane scroll = Theme.darkScroll(histArea);
+        scroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
+        scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        scroll.setBorder(BorderFactory.createLineBorder(Theme.BORDER));
+        content.add(scroll);
+        content.add(Box.createVerticalStrut(20));
+
+        patBox.addActionListener(e -> {
+            Patient p = (Patient) patBox.getSelectedItem();
+            if (p != null) histArea.setText(p.getMedicalHistory());
+        });
+        if (!pats.isEmpty()) histArea.setText(pats.get(0).getMedicalHistory());
+
+        JButton saveBtn = Theme.makeButton("Save Records", Theme.GREEN);
+        saveBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        saveBtn.addActionListener(e -> {
+            Patient p = (Patient) patBox.getSelectedItem();
+            if (p != null) {
+                p.setMedicalHistory(histArea.getText());
+                JOptionPane.showMessageDialog(frame, "Medical records updated for " + p.getName());
+            }
+        });
+        content.add(saveBtn);
+        done();
+    }
+
     public void showProfile() {
         reset();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
@@ -109,7 +183,7 @@ public class DoctorPanel {
 
         JPanel card = Theme.card();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setMaximumSize(new Dimension(480, 220));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
         card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         card.add(Theme.label("Dr. " + doctor.getName(), Theme.FONT_H2, Theme.CYAN));
